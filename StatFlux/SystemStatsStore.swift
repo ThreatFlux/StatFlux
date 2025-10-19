@@ -319,7 +319,8 @@ private final class SystemStatsCollector {
         let rawWattage = doubleValue(for: "Watts")
         let timeToEmpty = description[kIOPSTimeToEmptyKey as String] as? Int
         let timeToFull = description[kIOPSTimeToFullChargeKey as String] as? Int
-        let isExternalConnected = description[kIOPSIsExternalPowerConnectedKey as String] as? Bool
+        let powerSourceState = description[kIOPSPowerSourceStateKey as String] as? String
+        let isExternalConnected = powerSourceState.map { $0 == kIOPSACPowerValue }
         let batteryHealth = description[kIOPSBatteryHealthKey as String] as? String
         let manufacturer = description["Manufacturer"] as? String
         let deviceName = description[kIOPSNameKey as String] as? String

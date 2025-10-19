@@ -5,12 +5,21 @@ struct MenuBarSummaryLabel: View {
     @EnvironmentObject private var statsStore: SystemStatsStore
 
     var body: some View {
-        summaryText
-            .font(.system(size: 12, weight: .semibold, design: .rounded))
-            .monospacedDigit()
-            .foregroundStyle(.primary)
-            .padding(.vertical, 2)
-            .padding(.horizontal, 8)
+        HStack(spacing: 6) {
+            statSummary(icon: "gauge", value: percentString(statsStore.snapshot.cpu?.usage))
+            separator
+            statSummary(icon: "memorychip", value: memoryPercent)
+            separator
+            statSummary(icon: batteryIcon, value: batteryPercent)
+            separator
+            statSummary(icon: "externaldrive.fill", value: diskPercent)
+        }
+        .font(.system(size: 12, weight: .semibold, design: .rounded))
+        .foregroundStyle(.primary)
+        .padding(.vertical, 2)
+        .padding(.horizontal, 8)
+        .background(Color.clear)
+        .fixedSize()
     }
 
     private var memoryPercent: String {
@@ -60,24 +69,18 @@ struct MenuBarSummaryLabel: View {
         }
     }
 
-    private var summaryText: Text {
-        statText(icon: "gauge", value: percentString(statsStore.snapshot.cpu?.usage))
-        + separatorText
-        + statText(icon: "memorychip", value: memoryPercent)
-        + separatorText
-        + statText(icon: batteryIcon, value: batteryPercent)
-        + separatorText
-        + statText(icon: "externaldrive.fill", value: diskPercent)
+    private func statSummary(icon: String, value: String) -> some View {
+        HStack(spacing: 2) {
+            Image(systemName: icon)
+                .foregroundStyle(Color.accentColor)
+            Text(value)
+                .monospacedDigit()
+        }
     }
 
-    private func statText(icon: String, value: String) -> Text {
-        Text(Image(systemName: icon))
-            .foregroundStyle(Color.accentColor)
-        + Text(" \(value)")
-    }
-
-    private var separatorText: Text {
-        Text(" • ")
+    private var separator: some View {
+        Text("•")
+            .foregroundStyle(.secondary)
     }
 }
 #endif

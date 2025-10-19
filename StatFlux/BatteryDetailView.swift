@@ -59,22 +59,22 @@ struct BatteryDetailView: View {
     private var diagnosticsSection: some View {
         GroupBox("Health") {
             VStack(alignment: .leading, spacing: 8) {
-                guard let details = statsStore.snapshot.batteryDetails else {
+                if let details = statsStore.snapshot.batteryDetails {
+                    if let health = details.batteryHealth {
+                        detailRow(title: "Battery Health", value: health)
+                    }
+
+                    if let temperature = details.temperatureCelsius {
+                        let measurement = Measurement(value: temperature, unit: UnitTemperature.celsius)
+                        detailRow(title: "Temperature", value: Self.temperatureFormatter.string(from: measurement))
+                    }
+
+                    if let cycleCount = details.cycleCount {
+                        detailRow(title: "Cycle Count", value: "\(cycleCount)")
+                    }
+                } else {
                     Text("Diagnostics unavailable.")
                         .foregroundStyle(.secondary)
-                    return
-                }
-
-                if let health = details.batteryHealth {
-                    detailRow(title: "Battery Health", value: health)
-                }
-
-                if let temperature = details.temperatureCelsius {
-                    detailRow(title: "Temperature", value: Self.temperatureFormatter.string(fromValue: temperature, unit: .celsius))
-                }
-
-                if let cycleCount = details.cycleCount {
-                    detailRow(title: "Cycle Count", value: "\(cycleCount)")
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -84,26 +84,25 @@ struct BatteryDetailView: View {
     private var capacitySection: some View {
         GroupBox("Capacity") {
             VStack(alignment: .leading, spacing: 8) {
-                guard let details = statsStore.snapshot.batteryDetails else {
+                if let details = statsStore.snapshot.batteryDetails {
+                    if let current = details.currentCapacitymAh {
+                        detailRow(title: "Current Capacity", value: Self.capacityFormatter.string(from: current))
+                    }
+
+                    if let full = details.fullyChargedCapacitymAh {
+                        detailRow(title: "Full Charge Capacity", value: Self.capacityFormatter.string(from: full))
+                    }
+
+                    if let design = details.designCapacitymAh {
+                        detailRow(title: "Design Capacity", value: Self.capacityFormatter.string(from: design))
+                        if let full = details.fullyChargedCapacitymAh, design > 0 {
+                            let health = max(min(full / design, 1), 0)
+                            detailRow(title: "Capacity Health", value: health.formatted(.percent.precision(.fractionLength(0))))
+                        }
+                    }
+                } else {
                     Text("No capacity data available.")
                         .foregroundStyle(.secondary)
-                    return
-                }
-
-                if let current = details.currentCapacitymAh {
-                    detailRow(title: "Current Capacity", value: Self.capacityFormatter.string(from: current))
-                }
-
-                if let full = details.fullyChargedCapacitymAh {
-                    detailRow(title: "Full Charge Capacity", value: Self.capacityFormatter.string(from: full))
-                }
-
-                if let design = details.designCapacitymAh {
-                    detailRow(title: "Design Capacity", value: Self.capacityFormatter.string(from: design))
-                    if let full = details.fullyChargedCapacitymAh, design > 0 {
-                        let health = max(min(full / design, 1), 0)
-                        detailRow(title: "Capacity Health", value: health.formatted(.percent.precision(.fractionLength(0))))
-                    }
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -113,22 +112,21 @@ struct BatteryDetailView: View {
     private var powerSection: some View {
         GroupBox("Power & Charging") {
             VStack(alignment: .leading, spacing: 8) {
-                guard let details = statsStore.snapshot.batteryDetails else {
+                if let details = statsStore.snapshot.batteryDetails {
+                    if let voltage = details.voltage {
+                        detailRow(title: "Battery Voltage", value: Self.voltageFormatter.string(from: voltage))
+                    }
+
+                    if let amperage = details.amperagemA {
+                        detailRow(title: "Battery Current", value: Self.currentFormatter.string(from: amperage))
+                    }
+
+                    if let watts = details.wattage {
+                        detailRow(title: "Battery Power", value: Self.wattFormatter.string(from: watts))
+                    }
+                } else {
                     Text("Power data unavailable.")
                         .foregroundStyle(.secondary)
-                    return
-                }
-
-                if let voltage = details.voltage {
-                    detailRow(title: "Battery Voltage", value: Self.voltageFormatter.string(from: voltage))
-                }
-
-                if let amperage = details.amperagemA {
-                    detailRow(title: "Battery Current", value: Self.currentFormatter.string(from: amperage))
-                }
-
-                if let watts = details.wattage {
-                    detailRow(title: "Battery Power", value: Self.wattFormatter.string(from: watts))
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -138,26 +136,25 @@ struct BatteryDetailView: View {
     private var adapterSection: some View {
         GroupBox("Adapter") {
             VStack(alignment: .leading, spacing: 8) {
-                guard let details = statsStore.snapshot.batteryDetails else {
+                if let details = statsStore.snapshot.batteryDetails {
+                    if let connected = details.isExternalConnected {
+                        detailRow(title: "External Power", value: connected ? "Connected" : "Disconnected")
+                    }
+
+                    if let volts = details.adapterVoltage {
+                        detailRow(title: "Adapter Voltage", value: Self.voltageFormatter.string(from: volts))
+                    }
+
+                    if let current = details.adapterAmperagemA {
+                        detailRow(title: "Adapter Current", value: Self.currentFormatter.string(from: current))
+                    }
+
+                    if let watts = details.adapterWatts {
+                        detailRow(title: "Adapter Power", value: Self.wattFormatter.string(from: watts))
+                    }
+                } else {
                     Text("Adapter information unavailable.")
                         .foregroundStyle(.secondary)
-                    return
-                }
-
-                if let connected = details.isExternalConnected {
-                    detailRow(title: "External Power", value: connected ? "Connected" : "Disconnected")
-                }
-
-                if let volts = details.adapterVoltage {
-                    detailRow(title: "Adapter Voltage", value: Self.voltageFormatter.string(from: volts))
-                }
-
-                if let current = details.adapterAmperagemA {
-                    detailRow(title: "Adapter Current", value: Self.currentFormatter.string(from: current))
-                }
-
-                if let watts = details.adapterWatts {
-                    detailRow(title: "Adapter Power", value: Self.wattFormatter.string(from: watts))
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -167,26 +164,25 @@ struct BatteryDetailView: View {
     private var metadataSection: some View {
         GroupBox("Device") {
             VStack(alignment: .leading, spacing: 8) {
-                guard let details = statsStore.snapshot.batteryDetails else {
+                if let details = statsStore.snapshot.batteryDetails {
+                    if let manufacturer = details.manufacturer {
+                        detailRow(title: "Manufacturer", value: manufacturer)
+                    }
+
+                    if let deviceName = details.deviceName {
+                        detailRow(title: "Battery Name", value: deviceName)
+                    }
+
+                    if let serial = details.serialNumber {
+                        detailRow(title: "Serial Number", value: serial)
+                    }
+
+                    if let firmware = details.firmwareVersion {
+                        detailRow(title: "Firmware Version", value: firmware)
+                    }
+                } else {
                     Text("No device metadata available.")
                         .foregroundStyle(.secondary)
-                    return
-                }
-
-                if let manufacturer = details.manufacturer {
-                    detailRow(title: "Manufacturer", value: manufacturer)
-                }
-
-                if let deviceName = details.deviceName {
-                    detailRow(title: "Battery Name", value: deviceName)
-                }
-
-                if let serial = details.serialNumber {
-                    detailRow(title: "Serial Number", value: serial)
-                }
-
-                if let firmware = details.firmwareVersion {
-                    detailRow(title: "Firmware Version", value: firmware)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
