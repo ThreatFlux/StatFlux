@@ -26,6 +26,7 @@ struct MenuBarSummaryLabel: View {
         }
         .font(.system(size: 12, weight: .semibold, design: .rounded))
         .foregroundStyle(.primary)
+        .fixedSize()
     }
 
     private var memoryPercent: String {
@@ -57,8 +58,12 @@ struct MenuBarSummaryLabel: View {
     }
 
     private func statSummary(icon: String, value: String) -> some View {
-        (Text(Image(systemName: icon)) + Text(" \(value)"))
-            .monospacedDigit()
+        HStack(spacing: 3) {
+            Image(systemName: icon)
+                .foregroundStyle(Color.accentColor)
+            Text(value)
+                .monospacedDigit()
+        }
     }
 
     private var separator: some View {

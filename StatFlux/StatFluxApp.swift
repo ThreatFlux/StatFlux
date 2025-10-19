@@ -17,7 +17,7 @@ struct StatFluxApp: App {
             MenuBarSummaryLabel()
                 .environmentObject(statsStore)
         }
-        .menuBarExtraStyle(.menu)
+        .menuBarExtraStyle(.window)
 #endif
     }
 }
