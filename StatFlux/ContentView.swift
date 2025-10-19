@@ -30,7 +30,13 @@ struct ContentView: View {
                         StatCard(icon: "bolt.fill", title: "Battery", display: SystemStatsFormatter.battery(from: statsStore.snapshot))
                     }
                     .buttonStyle(.plain)
-                    StatCard(icon: "externaldrive.fill", title: "Storage", display: SystemStatsFormatter.storage(from: statsStore.snapshot))
+                    NavigationLink {
+                        StorageDetailView()
+                            .environmentObject(statsStore)
+                    } label: {
+                        StatCard(icon: "externaldrive.fill", title: "Storage", display: SystemStatsFormatter.storage(from: statsStore.snapshot))
+                    }
+                    .buttonStyle(.plain)
                 }
                 .padding(.vertical, 16)
 

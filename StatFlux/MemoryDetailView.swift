@@ -44,7 +44,9 @@ struct MemoryDetailView: View {
                     } currentValueLabel: {
                         Text(Self.byteFormatter.string(fromByteCount: Int64(memory.usedBytes)))
                     }
-                    .accessibilityValue(usageRatio, format: .percent)
+                    .accessibilityValue(
+                        Text(usageRatio.formatted(.percent.precision(.fractionLength(0))))
+                    )
                 }
 
                 Text("Total Physical Memory: \(totals.total)")
