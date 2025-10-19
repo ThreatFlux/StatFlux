@@ -222,14 +222,14 @@ struct StorageDetailView: View {
                     try? directorySize(at: url)
                 }
 
-                let fsType = fileSystemType(for: rootURL.path)
+                let fsInfo = fileSystemInfo(for: rootURL.path)
 
                 return VolumeInfo(
                     rootPath: rootURL.path,
                     name: resourceValues.volumeLocalizedName ?? resourceValues.volumeName,
-                    fileSystemType: fsType,
+                    fileSystemType: fsInfo.type,
                     uuidString: resourceValues.volumeUUIDString,
-                    isEncrypted: resourceValues.volumeIsEncrypted,
+                    isEncrypted: resourceValues.volumeIsEncrypted ?? (fsInfo.type?.localizedCaseInsensitiveContains("apfs") == true ? true : nil),
                     isCaseSensitive: resourceValues.volumeSupportsCaseSensitiveNames,
                     supportsCompression: resourceValues.volumeSupportsCompression,
                     supportsCloning: resourceValues.volumeSupportsFileCloning,
@@ -254,14 +254,15 @@ struct StorageDetailView: View {
             return total
         }
 
-        private static func fileSystemType(for path: String) -> String? {
+        private static func fileSystemInfo(for path: String) -> (type: String?, encrypted: Bool?) {
             var stats = statfs()
-            guard statfs(path, &stats) == 0 else { return nil }
-            return withUnsafePointer(to: &stats.f_fstypename) { pointer -> String? in
+            guard statfs(path, &stats) == 0 else { return (nil, nil) }
+            let type = withUnsafePointer(to: &stats.f_fstypename) { pointer -> String? in
                 pointer.withMemoryRebound(to: CChar.self, capacity: Int(MNAMELEN)) {
                     String(validatingUTF8: $0)
                 }
             }
+            return (type, nil)
         }
     }
 }
