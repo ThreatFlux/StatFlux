@@ -14,23 +14,18 @@ struct MenuBarSummaryLabel: View {
         .padding(.horizontal, 8)
     }
 
-    @ViewBuilder
     private var summaryContent: some View {
         HStack(spacing: 6) {
-            cpuSummary
+            statSummary(icon: "gauge", value: percentString(statsStore.snapshot.cpu?.usage))
             separator
-            labelSummary(prefix: "MEM", value: memoryPercent)
+            statSummary(icon: "memorychip", value: memoryPercent)
             separator
-            labelSummary(prefix: "BAT", value: batteryPercent)
+            statSummary(icon: batteryIcon, value: batteryPercent)
             separator
-            labelSummary(prefix: "DISK", value: diskPercent)
+            statSummary(icon: "externaldrive.fill", value: diskPercent)
         }
         .font(.system(size: 12, weight: .semibold, design: .rounded))
         .foregroundStyle(.primary)
-    }
-
-    private var cpuPercent: String {
-        percentString(statsStore.snapshot.cpu?.usage)
     }
 
     private var memoryPercent: String {
@@ -61,19 +56,33 @@ struct MenuBarSummaryLabel: View {
         return clamped.formatted(.percent.precision(.fractionLength(0)))
     }
 
-    private var cpuSummary: some View {
-        (Text(Image(systemName: "gauge")) + Text(" \(cpuPercent)"))
-            .monospacedDigit()
-    }
-
-    private func labelSummary(prefix: String, value: String) -> some View {
-        Text("\(prefix) \(value)")
+    private func statSummary(icon: String, value: String) -> some View {
+        (Text(Image(systemName: icon)) + Text(" \(value)"))
             .monospacedDigit()
     }
 
     private var separator: some View {
         Text("•")
             .foregroundStyle(.secondary)
+    }
+
+    private var batteryIcon: String {
+        guard let level = statsStore.snapshot.battery?.level else {
+            return "bolt.slash"
+        }
+
+        switch level {
+        case ..<0.25:
+            return "battery.0"
+        case ..<0.5:
+            return "battery.25"
+        case ..<0.75:
+            return "battery.50"
+        case ..<0.95:
+            return "battery.75"
+        default:
+            return "battery.100"
+        }
     }
 }
 #endif
