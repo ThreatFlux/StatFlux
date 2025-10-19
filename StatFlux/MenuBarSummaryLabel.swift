@@ -8,23 +8,25 @@ struct MenuBarSummaryLabel: View {
         HStack(spacing: 6) {
             Image(systemName: "chart.xyaxis.line")
                 .foregroundStyle(Color.accentColor)
-            Text(summaryText)
-                .monospacedDigit()
-                .font(.system(size: 12, weight: .semibold, design: .rounded))
-                .foregroundStyle(.primary)
+            summaryContent
         }
         .padding(.vertical, 2)
         .padding(.horizontal, 8)
     }
 
-    private var summaryText: String {
-        [
-            "CPU \(cpuPercent)",
-            "MEM \(memoryPercent)",
-            "BAT \(batteryPercent)",
-            "DISK \(diskPercent)"
-        ]
-        .joined(separator: " • ")
+    @ViewBuilder
+    private var summaryContent: some View {
+        HStack(spacing: 6) {
+            cpuSummary
+            separator
+            labelSummary(prefix: "MEM", value: memoryPercent)
+            separator
+            labelSummary(prefix: "BAT", value: batteryPercent)
+            separator
+            labelSummary(prefix: "DISK", value: diskPercent)
+        }
+        .font(.system(size: 12, weight: .semibold, design: .rounded))
+        .foregroundStyle(.primary)
     }
 
     private var cpuPercent: String {
@@ -57,6 +59,21 @@ struct MenuBarSummaryLabel: View {
         guard let value else { return "--" }
         let clamped = max(0, min(value, 1))
         return clamped.formatted(.percent.precision(.fractionLength(0)))
+    }
+
+    private var cpuSummary: some View {
+        (Text(Image(systemName: "gauge")) + Text(" \(cpuPercent)"))
+            .monospacedDigit()
+    }
+
+    private func labelSummary(prefix: String, value: String) -> some View {
+        Text("\(prefix) \(value)")
+            .monospacedDigit()
+    }
+
+    private var separator: some View {
+        Text("•")
+            .foregroundStyle(.secondary)
     }
 }
 #endif
