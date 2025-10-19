@@ -16,7 +16,13 @@ struct ContentView: View {
                     }
                     .buttonStyle(.plain)
 
-                    StatCard(icon: "square.stack.3d.up", title: "Memory", display: SystemStatsFormatter.memory(from: statsStore.snapshot))
+                    NavigationLink {
+                        MemoryDetailView()
+                            .environmentObject(statsStore)
+                    } label: {
+                        StatCard(icon: "square.stack.3d.up", title: "Memory", display: SystemStatsFormatter.memory(from: statsStore.snapshot))
+                    }
+                    .buttonStyle(.plain)
                     NavigationLink {
                         BatteryDetailView()
                             .environmentObject(statsStore)
