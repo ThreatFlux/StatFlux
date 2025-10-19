@@ -5,28 +5,12 @@ struct MenuBarSummaryLabel: View {
     @EnvironmentObject private var statsStore: SystemStatsStore
 
     var body: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "chart.xyaxis.line")
-                .foregroundStyle(Color.accentColor)
-            summaryContent
-        }
-        .padding(.vertical, 2)
-        .padding(.horizontal, 8)
-    }
-
-    private var summaryContent: some View {
-        HStack(spacing: 6) {
-            statSummary(icon: "gauge", value: percentString(statsStore.snapshot.cpu?.usage))
-            separator
-            statSummary(icon: "memorychip", value: memoryPercent)
-            separator
-            statSummary(icon: batteryIcon, value: batteryPercent)
-            separator
-            statSummary(icon: "externaldrive.fill", value: diskPercent)
-        }
-        .font(.system(size: 12, weight: .semibold, design: .rounded))
-        .foregroundStyle(.primary)
-        .fixedSize()
+        summaryText
+            .font(.system(size: 12, weight: .semibold, design: .rounded))
+            .monospacedDigit()
+            .foregroundStyle(.primary)
+            .padding(.vertical, 2)
+            .padding(.horizontal, 8)
     }
 
     private var memoryPercent: String {
@@ -57,20 +41,6 @@ struct MenuBarSummaryLabel: View {
         return clamped.formatted(.percent.precision(.fractionLength(0)))
     }
 
-    private func statSummary(icon: String, value: String) -> some View {
-        HStack(spacing: 3) {
-            Image(systemName: icon)
-                .foregroundStyle(Color.accentColor)
-            Text(value)
-                .monospacedDigit()
-        }
-    }
-
-    private var separator: some View {
-        Text("•")
-            .foregroundStyle(.secondary)
-    }
-
     private var batteryIcon: String {
         guard let level = statsStore.snapshot.battery?.level else {
             return "bolt.slash"
@@ -88,6 +58,24 @@ struct MenuBarSummaryLabel: View {
         default:
             return "battery.100"
         }
+    }
+
+    private var summaryText: Text {
+        statText(icon: "gauge", value: percentString(statsStore.snapshot.cpu?.usage))
+        + separatorText
+        + statText(icon: "memorychip", value: memoryPercent)
+        + separatorText
+        + statText(icon: batteryIcon, value: batteryPercent)
+        + separatorText
+        + statText(icon: "externaldrive.fill", value: diskPercent)
+    }
+
+    private func statText(icon: String, value: String) -> Text {
+        Text(Image(systemName: icon)) + Text(" \(value)")
+    }
+
+    private var separatorText: Text {
+        Text(" • ")
     }
 }
 #endif
