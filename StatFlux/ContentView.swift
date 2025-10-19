@@ -74,6 +74,7 @@ private struct StatCard: View {
             Text(display.primary)
                 .font(.title3.weight(.semibold))
                 .foregroundStyle(.primary)
+                .monospacedDigit()
 
             Text(display.secondary)
                 .font(.footnote)

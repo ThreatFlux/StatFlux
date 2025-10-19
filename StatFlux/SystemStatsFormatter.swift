@@ -27,7 +27,7 @@ enum SystemStatsFormatter {
             return StatDisplayValue(primary: "--", secondary: "Collecting load data…")
         }
 
-        let primary = cpu.usage.formatted(.percent.precision(.fractionLength(0...1)))
+        let primary = "\(percentString(cpu.usage)) load"
 
         if cpu.loadAverages.isEmpty {
             return StatDisplayValue(primary: primary, secondary: "\(cpu.cores) cores active")
@@ -42,13 +42,14 @@ enum SystemStatsFormatter {
             return StatDisplayValue(primary: "--", secondary: "Calculating memory pressure…")
         }
 
+        let usage = usagePercentString(used: memory.usedBytes, total: memory.totalBytes)
         let used = byteFormatter.string(fromByteCount: Int64(memory.usedBytes))
         let total = byteFormatter.string(fromByteCount: Int64(memory.totalBytes))
-        let primary = "\(used) / \(total)"
+        let primary = usage.map { "\($0) used" } ?? "\(used) / \(total)"
 
         let wired = byteFormatter.string(fromByteCount: Int64(memory.wiredBytes))
         let compressed = byteFormatter.string(fromByteCount: Int64(memory.compressedBytes))
-        let secondary = "Wired \(wired) • Compressed \(compressed)"
+        let secondary = "\(used) of \(total) • Wired \(wired) • Compressed \(compressed)"
         return StatDisplayValue(primary: primary, secondary: secondary)
     }
 
@@ -59,7 +60,7 @@ enum SystemStatsFormatter {
 
         let primary: String
         if let level = battery.level {
-            primary = level.formatted(.percent.precision(.fractionLength(0)))
+            primary = percentString(level)
         } else {
             primary = battery.statusDescription
         }
@@ -85,14 +86,29 @@ enum SystemStatsFormatter {
         }
 
         let available = byteFormatter.string(fromByteCount: Int64(storage.availableBytes))
-        if let total = storage.totalBytes {
+        if let total = storage.totalBytes, total > 0 {
             let totalFormatted = byteFormatter.string(fromByteCount: Int64(total))
             let used = total > storage.availableBytes ? total - storage.availableBytes : 0
             let usedFormatted = byteFormatter.string(fromByteCount: Int64(used))
-            return StatDisplayValue(primary: "\(available) free of \(totalFormatted)", secondary: "Used \(usedFormatted)")
+            let usage = usagePercentString(used: used, total: total)
+            let primary = usage.map { "\($0) used" } ?? "\(usedFormatted) used"
+            return StatDisplayValue(primary: primary, secondary: "\(usedFormatted) of \(totalFormatted) used • \(available) free")
         } else {
             return StatDisplayValue(primary: "\(available) available", secondary: "Waiting for total capacity…")
         }
+    }
+}
+
+private extension SystemStatsFormatter {
+    static func percentString(_ value: Double) -> String {
+        value.formatted(.percent.precision(.fractionLength(0)))
+    }
+
+    static func usagePercentString(used: UInt64, total: UInt64) -> String? {
+        guard total > 0 else { return nil }
+        let ratio = Double(used) / Double(total)
+        guard ratio.isFinite else { return nil }
+        return percentString(max(0, min(ratio, 1)))
     }
 }
 

@@ -10,11 +10,14 @@ struct StatFluxApp: App {
                 .environmentObject(statsStore)
         }
 #if os(macOS)
-        MenuBarExtra("StatFlux", systemImage: "chart.xyaxis.line") {
+        MenuBarExtra {
             MenuBarDashboard()
                 .environmentObject(statsStore)
+        } label: {
+            MenuBarSummaryLabel()
+                .environmentObject(statsStore)
         }
-        .menuBarExtraStyle(.window)
+        .menuBarExtraStyle(.menu)
 #endif
     }
 }

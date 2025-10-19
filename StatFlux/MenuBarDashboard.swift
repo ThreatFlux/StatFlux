@@ -61,6 +61,7 @@ private struct StatRow: View {
 
                 Text(display.primary)
                     .font(.body.weight(.semibold))
+                    .monospacedDigit()
 
                 Text(display.secondary)
                     .font(.caption2)
