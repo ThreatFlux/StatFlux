@@ -31,6 +31,13 @@ struct MenuBarDashboard: View {
                     Label("Refresh Now", systemImage: "arrow.clockwise")
                 }
                 .buttonStyle(.plain)
+
+                Button {
+                    NSApplication.shared.terminate(nil)
+                } label: {
+                    Label("Quit StatFlux", systemImage: "power")
+                }
+                .buttonStyle(.plain)
             }
 
             Text("Updated \(statsStore.snapshot.timestamp, format: .relative(presentation: .named))")
