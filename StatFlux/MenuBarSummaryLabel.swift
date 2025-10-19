@@ -8,6 +8,8 @@ struct MenuBarSummaryLabel: View {
         HStack(spacing: 6) {
             statSummary(icon: "gauge", value: percentString(statsStore.snapshot.cpu?.usage))
             separator
+            statSummary(icon: "chart.line.uptrend.xyaxis", value: gpuPercent)
+            separator
             statSummary(icon: "memorychip", value: memoryPercent)
             separator
             statSummary(icon: batteryIcon, value: batteryPercent)
@@ -28,6 +30,13 @@ struct MenuBarSummaryLabel: View {
         else { return "--" }
         let ratio = Double(memory.usedBytes) / Double(memory.totalBytes)
         return percentString(ratio)
+    }
+
+    private var gpuPercent: String {
+        let utilization = statsStore.snapshot.gpu?.deviceUtilization
+            ?? statsStore.snapshot.gpu?.rendererUtilization
+            ?? statsStore.snapshot.gpu?.tilerUtilization
+        return percentString(utilization)
     }
 
     private var batteryPercent: String {

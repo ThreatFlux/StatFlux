@@ -37,6 +37,9 @@ struct BatteryDetailView: View {
                     detailRow(title: "State", value: battery.statusDescription)
 
                     if let details = statsStore.snapshot.batteryDetails {
+                        if let energyMode = details.energyMode {
+                            detailRow(title: "Energy Mode", value: energyMode.description)
+                        }
                         if let minutes = details.timeToEmptyMinutes, minutes > 0 {
                             detailRow(title: "Time to Empty", value: Self.timeFormatter.string(from: TimeInterval(minutes) * 60) ?? "--")
                         }

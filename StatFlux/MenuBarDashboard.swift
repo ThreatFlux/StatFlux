@@ -9,6 +9,7 @@ struct MenuBarDashboard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             StatRow(label: "CPU", display: SystemStatsFormatter.cpu(from: statsStore.snapshot), icon: "gauge")
+            StatRow(label: "GPU", display: SystemStatsFormatter.gpu(from: statsStore.snapshot), icon: "chart.line.uptrend.xyaxis")
 
             StatRow(label: "Memory", display: SystemStatsFormatter.memory(from: statsStore.snapshot), icon: "square.stack.3d.up")
             StatRow(label: "Battery", display: SystemStatsFormatter.battery(from: statsStore.snapshot), icon: "bolt.fill")

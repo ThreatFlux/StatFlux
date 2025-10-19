@@ -17,6 +17,14 @@ struct ContentView: View {
                     .buttonStyle(.plain)
 
                     NavigationLink {
+                        GPUDetailView()
+                            .environmentObject(statsStore)
+                    } label: {
+                        StatCard(icon: "chart.line.uptrend.xyaxis", title: "GPU", display: SystemStatsFormatter.gpu(from: statsStore.snapshot))
+                    }
+                    .buttonStyle(.plain)
+
+                    NavigationLink {
                         MemoryDetailView()
                             .environmentObject(statsStore)
                     } label: {
@@ -46,7 +54,7 @@ struct ContentView: View {
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding(.bottom, 8)
 
-                Text("StatFlux continuously samples CPU, memory, battery, and storage to keep you informed.")
+                Text("StatFlux continuously samples CPU, GPU, memory, battery, and storage to keep you informed.")
                     .font(.caption)
                     .multilineTextAlignment(.center)
                     .foregroundStyle(.secondary)

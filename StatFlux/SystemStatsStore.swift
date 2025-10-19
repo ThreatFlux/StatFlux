@@ -6,6 +6,11 @@ import UIKit
 #if os(macOS)
 import AppKit
 import IOKit.ps
+import IOKit
+import IOKit.graphics
+
+@_silgen_name("IOPMCopyActivePMPreferences")
+private func IOPMCopyActivePMPreferences() -> Unmanaged<CFDictionary>?
 #endif
 import Darwin
 
@@ -14,10 +19,11 @@ struct SystemStatsSnapshot {
     var memory: MemoryStat?
     var battery: BatteryStat?
     var storage: StorageStat?
+    var gpu: GPUStat?
     var batteryDetails: BatteryDetails?
     var timestamp: Date = Date()
 
-    static let empty = SystemStatsSnapshot(cpu: nil, memory: nil, battery: nil, storage: nil, batteryDetails: nil, timestamp: Date())
+    static let empty = SystemStatsSnapshot(cpu: nil, memory: nil, battery: nil, storage: nil, gpu: nil, batteryDetails: nil, timestamp: Date())
 }
 
 struct CPUCoreUsage: Identifiable {
@@ -60,6 +66,35 @@ struct MemoryStat {
     let compressedBytes: UInt64
 }
 
+struct GPUStat {
+    /// Overall GPU activity (0...1) when available.
+    let deviceUtilization: Double?
+    /// Renderer pipeline utilization (0...1) when available.
+    let rendererUtilization: Double?
+    /// Tiler pipeline utilization (0...1) when available.
+    let tilerUtilization: Double?
+    /// Total GPU-resident system memory currently in use.
+    let inUseMemoryBytes: UInt64?
+    /// GPU system memory attributed to drivers.
+    let driverMemoryBytes: UInt64?
+    /// Total GPU system memory allocation.
+    let allocatedMemoryBytes: UInt64?
+    /// Reported GPU core count when available.
+    let coreCount: Int?
+    /// Marketing / hardware model string when available.
+    let model: String?
+    /// Number of GPU clusters/GP blocks when available.
+    let clusterCount: Int?
+    /// Number of multi-GPU partitions when available.
+    let multiGPUCount: Int?
+    /// Active core counts per cluster when available.
+    let coresPerCluster: [Int]?
+    /// Reported architecture or variant identifier.
+    let architecture: String?
+    /// Current power state reported by IOPM.
+    let powerState: Int?
+}
+
 struct BatteryStat {
     enum PowerSource {
         case ac
@@ -76,6 +111,26 @@ struct BatteryStat {
 }
 
 struct BatteryDetails {
+    enum EnergyMode: Equatable {
+        case lowPower
+        case automatic
+        case highPower
+        case custom(String)
+
+        var description: String {
+            switch self {
+            case .lowPower:
+                return "Low Power"
+            case .automatic:
+                return "Automatic"
+            case .highPower:
+                return "High Power"
+            case let .custom(label):
+                return label
+            }
+        }
+    }
+
     let designCapacitymAh: Double?
     let fullyChargedCapacitymAh: Double?
     let currentCapacitymAh: Double?
@@ -95,6 +150,7 @@ struct BatteryDetails {
     let adapterAmperagemA: Double?
     let adapterVoltage: Double?
     let adapterWatts: Double?
+    let energyMode: EnergyMode?
 }
 
 struct StorageStat {
@@ -145,11 +201,15 @@ private final class SystemStatsCollector {
     private var previousCPULoad: host_cpu_load_info = host_cpu_load_info()
     private var hasPreviousCPULoad = false
     private var previousCoreLoads: [Int: CPUCoreTicks] = [:]
+    private var previousGPUDeviceUtilization: Double?
+    private var previousGPURendererUtilization: Double?
+    private var previousGPUTilerUtilization: Double?
 
     func collect() -> SystemStatsSnapshot {
         var snapshot = SystemStatsSnapshot.empty
         snapshot.cpu = fetchCPUUsage()
         snapshot.memory = fetchMemoryUsage()
+        snapshot.gpu = fetchGPUUsage()
         snapshot.battery = fetchBatteryStatus()
         snapshot.batteryDetails = fetchBatteryDetails()
         snapshot.storage = fetchStorageUsage()
@@ -252,6 +312,156 @@ private final class SystemStatsCollector {
         let total = used + free
 
         return MemoryStat(usedBytes: used, totalBytes: total, wiredBytes: wired, compressedBytes: compressed)
+    }
+
+    private func fetchGPUUsage() -> GPUStat? {
+#if os(macOS)
+        guard let matching = IOServiceMatching("IOAccelerator") else {
+            return nil
+        }
+
+        var iterator: io_iterator_t = 0
+        let serviceResult = IOServiceGetMatchingServices(kIOMainPortDefault, matching, &iterator)
+        guard serviceResult == KERN_SUCCESS else {
+            return nil
+        }
+        defer {
+            IOObjectRelease(iterator)
+        }
+
+        var deviceUtilizations: [Double] = []
+        var rendererUtilizations: [Double] = []
+        var tilerUtilizations: [Double] = []
+        var inUseMemory: UInt64 = 0
+        var driverMemory: UInt64 = 0
+        var allocatedMemory: UInt64 = 0
+        var model: String?
+        var coreCount: Int?
+        var clusterCount: Int?
+        var multiGPUCount: Int?
+        var coresPerCluster: [Int]?
+        var architecture: String?
+        var powerState: Int?
+
+        var service = IOIteratorNext(iterator)
+        while service != 0 {
+            defer { IOObjectRelease(service) }
+
+            if let performance = IORegistryEntryCreateCFProperty(service, "PerformanceStatistics" as CFString, kCFAllocatorDefault, 0)?.takeRetainedValue() as? [String: Any] {
+                if let value = Self.percentageValue(performance["Device Utilization %"]) {
+                    deviceUtilizations.append(value)
+                }
+                if let value = Self.percentageValue(performance["Renderer Utilization %"]) {
+                    rendererUtilizations.append(value)
+                }
+                if let value = Self.percentageValue(performance["Tiler Utilization %"]) {
+                    tilerUtilizations.append(value)
+                }
+                if let value = Self.byteValue(performance["In use system memory"]) {
+                    inUseMemory = inUseMemory &+ value
+                }
+                if let value = Self.byteValue(performance["In use system memory (driver)"]) {
+                    driverMemory = driverMemory &+ value
+                }
+                if let value = Self.byteValue(performance["Alloc system memory"]) {
+                    allocatedMemory = allocatedMemory &+ value
+                }
+            }
+
+            if model == nil,
+               let rawModel = IORegistryEntryCreateCFProperty(service, "model" as CFString, kCFAllocatorDefault, 0)?.takeRetainedValue() {
+                if let string = rawModel as? String {
+                    model = string.trimmingCharacters(in: .whitespacesAndNewlines)
+                } else if let data = rawModel as? Data,
+                          let string = String(data: data, encoding: .utf8) {
+                    model = string.trimmingCharacters(in: .whitespacesAndNewlines)
+                }
+            }
+
+            if coreCount == nil,
+               let rawCores = IORegistryEntryCreateCFProperty(service, "gpu-core-count" as CFString, kCFAllocatorDefault, 0)?.takeRetainedValue() as? NSNumber {
+                coreCount = rawCores.intValue
+            }
+
+            if (clusterCount == nil || coresPerCluster == nil || architecture == nil || multiGPUCount == nil),
+               let configuration = IORegistryEntryCreateCFProperty(service, "GPUConfigurationVariable" as CFString, kCFAllocatorDefault, 0)?.takeRetainedValue() as? [String: Any] {
+                if clusterCount == nil,
+                   let clusters = configuration["num_gps"] as? NSNumber {
+                    clusterCount = clusters.intValue
+                }
+                if multiGPUCount == nil,
+                   let multi = configuration["num_mgpus"] as? NSNumber {
+                    multiGPUCount = multi.intValue
+                }
+                if coresPerCluster == nil,
+                   let masks = configuration["core_mask_list"] as? [Any] {
+                    let counts = masks.compactMap { mask -> Int? in
+                        if let number = mask as? NSNumber {
+                            let raw = number.uint64Value
+                            return Int(raw.nonzeroBitCount)
+                        }
+                        return nil
+                    }
+                    if !counts.isEmpty {
+                        coresPerCluster = counts
+                    }
+                }
+                if architecture == nil,
+                   let variant = configuration["gpu_var"] as? String {
+                    architecture = variant.nilIfEmpty
+                }
+            }
+
+            if powerState == nil,
+               let powerInfo = IORegistryEntryCreateCFProperty(service, "IOPowerManagement" as CFString, kCFAllocatorDefault, 0)?.takeRetainedValue() as? [String: Any],
+               let current = powerInfo["CurrentPowerState"] as? NSNumber {
+                powerState = current.intValue
+            }
+
+            service = IOIteratorNext(iterator)
+        }
+
+        let deviceAverage = Self.average(deviceUtilizations)
+        let rendererAverage = Self.average(rendererUtilizations)
+        let tilerAverage = Self.average(tilerUtilizations)
+
+        let smoothedDevice = smoothed(current: deviceAverage, previous: &previousGPUDeviceUtilization)
+        let smoothedRenderer = smoothed(current: rendererAverage, previous: &previousGPURendererUtilization)
+        let smoothedTiler = smoothed(current: tilerAverage, previous: &previousGPUTilerUtilization)
+
+        if deviceAverage == nil,
+           rendererAverage == nil,
+           tilerAverage == nil,
+           inUseMemory == 0,
+           driverMemory == 0,
+           allocatedMemory == 0,
+           model == nil,
+           coreCount == nil {
+            return nil
+        }
+
+        let resolvedInUse = inUseMemory > 0 ? inUseMemory : nil
+        let resolvedDriver = driverMemory > 0 ? driverMemory : nil
+        let resolvedAllocated = allocatedMemory > 0 ? allocatedMemory : nil
+
+        return GPUStat(
+            deviceUtilization: smoothedDevice ?? deviceAverage,
+            rendererUtilization: smoothedRenderer ?? rendererAverage,
+            tilerUtilization: smoothedTiler ?? tilerAverage,
+            inUseMemoryBytes: resolvedInUse,
+            driverMemoryBytes: resolvedDriver,
+            allocatedMemoryBytes: resolvedAllocated,
+            coreCount: coreCount,
+            model: model?.nilIfEmpty,
+            clusterCount: clusterCount,
+            multiGPUCount: multiGPUCount,
+            coresPerCluster: coresPerCluster,
+            architecture: architecture,
+            powerState: powerState
+        )
+#else
+        return nil
+#endif
     }
 
     private func fetchBatteryStatus() -> BatteryStat? {
@@ -378,6 +588,16 @@ private final class SystemStatsCollector {
         let deviceName = description[kIOPSNameKey as String] as? String
         let serialNumber = description["SerialNumber"] as? String
         let firmwareVersion = description["FirmwareVersion"] as? String ?? description["Firmware Version"] as? String
+        let lowPowerActive: Bool = {
+            if let boolValue = description["LPM Active"] as? Bool {
+                return boolValue
+            }
+            if let numberValue = description["LPM Active"] as? NSNumber {
+                return numberValue.intValue > 0
+            }
+            return false
+        }()
+        let energyMode = determineEnergyMode(powerSourceState: powerSourceState, lowPowerActive: lowPowerActive)
 
         var adapterVoltage: Double?
         var adapterAmperage: Double?
@@ -418,7 +638,8 @@ private final class SystemStatsCollector {
            firmwareVersion == nil,
            adapterVoltage == nil,
            adapterAmperage == nil,
-           adapterWatts == nil {
+           adapterWatts == nil,
+           energyMode == nil {
             return nil
         }
 
@@ -441,7 +662,8 @@ private final class SystemStatsCollector {
             firmwareVersion: firmwareVersion,
             adapterAmperagemA: adapterAmperage,
             adapterVoltage: adapterVoltage,
-            adapterWatts: adapterWatts
+            adapterWatts: adapterWatts,
+            energyMode: energyMode
         )
 #elseif os(iOS)
         let device = UIDevice.current
@@ -467,12 +689,142 @@ private final class SystemStatsCollector {
             firmwareVersion: nil,
             adapterAmperagemA: nil,
             adapterVoltage: nil,
-            adapterWatts: nil
+            adapterWatts: nil,
+            energyMode: nil
         )
 #else
         return nil
 #endif
     }
+
+#if os(macOS)
+    private func determineEnergyMode(powerSourceState: String?, lowPowerActive: Bool) -> BatteryDetails.EnergyMode? {
+        if let frameworkMode = activePowerModeFromPrivateFramework() {
+            return frameworkMode
+        }
+
+        if lowPowerActive {
+            return .lowPower
+        }
+
+        if #available(macOS 12.0, *) {
+            if ProcessInfo.processInfo.isLowPowerModeEnabled {
+                return .lowPower
+            }
+        }
+
+        guard let preferences = IOPMCopyActivePMPreferences()?.takeRetainedValue() as? [String: Any] else {
+            return nil
+        }
+
+        let sourceKey: String
+        if powerSourceState == kIOPSACPowerValue as String {
+            sourceKey = "AC Power"
+        } else if powerSourceState == kIOPSBatteryPowerValue as String {
+            sourceKey = "Battery Power"
+        } else {
+            sourceKey = "AC Power"
+        }
+
+        guard let settings = preferences[sourceKey] as? [String: Any] else {
+            return nil
+        }
+
+        if let explicit = (settings["EnergyMode"] as? NSString)?.trimmingCharacters(in: .whitespacesAndNewlines), !explicit.isEmpty {
+            let lowercased = explicit.lowercased()
+            if lowercased.contains("high") {
+                return .highPower
+            }
+            if lowercased.contains("low") {
+                return .lowPower
+            }
+            if lowercased.contains("auto") {
+                return .automatic
+            }
+            return .custom(explicit)
+        }
+
+        let lowSettingValue = (settings["LowPowerMode"] as? NSNumber)?.intValue
+        let highSettingValue = (settings["HighPowerMode"] as? NSNumber)?.intValue
+
+        if let highSettingValue {
+            if highSettingValue == 2 {
+                return .automatic
+            }
+            if highSettingValue >= 1 {
+                return .highPower
+            }
+        }
+
+        if let lowSettingValue {
+            switch lowSettingValue {
+            case 1:
+                return .lowPower
+            case 2:
+                return .automatic
+            default:
+                break
+            }
+        }
+
+        if lowSettingValue != nil || highSettingValue != nil {
+            return .automatic
+        }
+
+        return nil
+    }
+
+    private func activePowerModeFromPrivateFramework() -> BatteryDetails.EnergyMode? {
+        guard let bundle = Bundle(path: "/System/Library/PrivateFrameworks/LowPowerMode.framework") else {
+            return nil
+        }
+
+        if !bundle.isLoaded {
+            guard bundle.load() else {
+                return nil
+            }
+        }
+
+        guard bundle.isLoaded,
+              let modesClass = NSClassFromString("_PMPowerModes") as? NSObject.Type else {
+            return nil
+        }
+
+        let sharedSelector = NSSelectorFromString("sharedInstance")
+        guard modesClass.responds(to: sharedSelector),
+              let sharedUnmanaged = modesClass.perform(sharedSelector) else {
+            return nil
+        }
+
+        let manager = sharedUnmanaged.takeUnretainedValue()
+        let currentSelector = NSSelectorFromString("currentPowerMode")
+        guard (manager as AnyObject).responds(to: currentSelector),
+              let modeUnmanaged = (manager as AnyObject).perform(currentSelector) else {
+            return nil
+        }
+
+        let rawObject = modeUnmanaged.takeUnretainedValue()
+        let rawValue: Int
+        if let number = rawObject as? NSNumber {
+            rawValue = number.intValue
+        } else if let valueObject = rawObject as? Int {
+            rawValue = valueObject
+        } else {
+            return nil
+        }
+
+        switch rawValue {
+        case 1:
+            return .lowPower
+        case 2:
+            return .highPower
+        case 0:
+            fallthrough
+        default:
+            return .automatic
+        }
+    }
+#endif
 
     private func fetchStorageUsage() -> StorageStat? {
         let homeURL = URL(fileURLWithPath: NSHomeDirectory())
@@ -559,6 +911,38 @@ private final class SystemStatsCollector {
         return usages.sorted { $0.id < $1.id }
     }
 
+#if os(macOS)
+    private static func percentageValue(_ raw: Any?) -> Double? {
+        guard let number = raw as? NSNumber else {
+            return nil
+        }
+        let value = number.doubleValue / 100.0
+        guard value.isFinite else {
+            return nil
+        }
+        return max(0, min(value, 1))
+    }
+
+    private static func byteValue(_ raw: Any?) -> UInt64? {
+        guard let number = raw as? NSNumber else {
+            return nil
+        }
+        let value = number.doubleValue
+        guard value.isFinite, value >= 0 else {
+            return nil
+        }
+        return UInt64(value)
+    }
+
+    private static func average(_ values: [Double]) -> Double? {
+        guard !values.isEmpty else { return nil }
+        let total = values.reduce(0, +)
+        let mean = total / Double(values.count)
+        guard mean.isFinite else { return nil }
+        return max(0, min(mean, 1))
+    }
+#endif
+
     private func sysctlInt(_ name: String) -> Int? {
         var value: Int32 = 0
         var size = MemoryLayout<Int32>.size
@@ -600,4 +984,31 @@ private struct CPUCoreTicks {
     let system: UInt32
     let idle: UInt32
     let nice: UInt32
+}
+
+private extension String {
+    var nilIfEmpty: String? {
+        isEmpty ? nil : self
+    }
+}
+
+private extension SystemStatsCollector {
+    func smoothed(current: Double?, previous: inout Double?) -> Double? {
+        guard let current else {
+            return previous
+        }
+
+        let clamped = max(0, min(current, 1))
+
+        let smoothed: Double
+        if let previousValue = previous {
+            let damping = 0.65
+            smoothed = previousValue * damping + clamped * (1 - damping)
+        } else {
+            smoothed = clamped
+        }
+
+        previous = smoothed
+        return smoothed
+    }
 }

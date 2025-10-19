@@ -58,6 +58,56 @@ enum SystemStatsFormatter {
         return StatDisplayValue(primary: primary, secondary: secondary)
     }
 
+    static func gpu(from snapshot: SystemStatsSnapshot) -> StatDisplayValue {
+        guard let gpu = snapshot.gpu else {
+            return StatDisplayValue(primary: "--", secondary: "Waiting for GPU metrics…")
+        }
+
+        let primary: String
+        if let utilization = gpu.deviceUtilization {
+            primary = "\(percentString(utilization)) active"
+        } else if let renderer = gpu.rendererUtilization {
+            primary = "\(percentString(renderer)) renderer"
+        } else if let tiler = gpu.tilerUtilization {
+            primary = "\(percentString(tiler)) tiler"
+        } else {
+            primary = "--"
+        }
+
+        var details: [String] = []
+
+        if let renderer = gpu.rendererUtilization {
+            details.append("Renderer \(percentString(renderer))")
+        }
+        if let tiler = gpu.tilerUtilization {
+            details.append("Tiler \(percentString(tiler))")
+        }
+        if let memory = gpu.inUseMemoryBytes {
+            let used = byteFormatter.string(fromByteCount: Int64(memory))
+            if let total = gpu.allocatedMemoryBytes {
+                let totalString = byteFormatter.string(fromByteCount: Int64(total))
+                details.append("Memory \(used) / \(totalString)")
+            } else {
+                details.append("Memory \(used)")
+            }
+        } else if let driver = gpu.driverMemoryBytes {
+            let driverString = byteFormatter.string(fromByteCount: Int64(driver))
+            details.append("Driver Memory \(driverString)")
+        }
+        if let model = gpu.model {
+            details.append(model)
+        }
+        if let cores = gpu.coreCount {
+            details.append("\(cores) cores")
+        }
+
+        if details.isEmpty {
+            details.append("Sampling GPU statistics…")
+        }
+
+        return StatDisplayValue(primary: primary, secondary: details.uniqued().joined(separator: " • "))
+    }
+
     static func battery(from snapshot: SystemStatsSnapshot) -> StatDisplayValue {
         guard let battery = snapshot.battery else {
             return StatDisplayValue(primary: "--", secondary: "Battery data unavailable.")
