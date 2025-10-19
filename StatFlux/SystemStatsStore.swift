@@ -14,9 +14,10 @@ struct SystemStatsSnapshot {
     var memory: MemoryStat?
     var battery: BatteryStat?
     var storage: StorageStat?
+    var batteryDetails: BatteryDetails?
     var timestamp: Date = Date()
 
-    static let empty = SystemStatsSnapshot(cpu: nil, memory: nil, battery: nil, storage: nil, timestamp: Date())
+    static let empty = SystemStatsSnapshot(cpu: nil, memory: nil, battery: nil, storage: nil, batteryDetails: nil, timestamp: Date())
 }
 
 struct CPUStat {
@@ -48,6 +49,14 @@ struct BatteryStat {
     let statusDescription: String
     let timeRemaining: TimeInterval?
     let powerSource: PowerSource
+}
+
+struct BatteryDetails {
+    let designCapacitymAh: Double?
+    let fullyChargedCapacitymAh: Double?
+    let cycleCount: Int?
+    let temperatureCelsius: Double?
+    let voltage: Double?
 }
 
 struct StorageStat {
@@ -103,6 +112,7 @@ private final class SystemStatsCollector {
         snapshot.cpu = fetchCPUUsage()
         snapshot.memory = fetchMemoryUsage()
         snapshot.battery = fetchBatteryStatus()
+        snapshot.batteryDetails = fetchBatteryDetails()
         snapshot.storage = fetchStorageUsage()
         snapshot.timestamp = Date()
         return snapshot
@@ -260,6 +270,54 @@ private final class SystemStatsCollector {
         let timeInterval = timeRemainingMinutes > 0 ? TimeInterval(timeRemainingMinutes * 60) : nil
 
         return BatteryStat(level: level, isCharging: isCharging, statusDescription: status, timeRemaining: timeInterval, powerSource: powerSource)
+#else
+        return nil
+#endif
+    }
+
+    private func fetchBatteryDetails() -> BatteryDetails? {
+#if os(macOS)
+        guard let snapshot = IOPSCopyPowerSourcesInfo()?.takeRetainedValue(),
+              let sources = IOPSCopyPowerSourcesList(snapshot)?.takeRetainedValue() as? [CFTypeRef],
+              let source = sources.first,
+              let description = IOPSGetPowerSourceDescription(snapshot, source)?.takeUnretainedValue() as? [String: Any]
+        else {
+            return nil
+        }
+
+        let designCapacity = description["DesignCapacity"] as? Double
+        let fullChargeCapacity = description[kIOPSMaxCapacityKey as String] as? Double
+        let cycleCount = description["Cycle Count"] as? Int ?? description["CycleCount"] as? Int
+        let temperature = description["Temperature"] as? Double
+        let voltage = description["Voltage"] as? Double
+
+        if designCapacity == nil,
+           fullChargeCapacity == nil,
+           cycleCount == nil,
+           temperature == nil,
+           voltage == nil {
+            return nil
+        }
+
+        return BatteryDetails(
+            designCapacitymAh: designCapacity,
+            fullyChargedCapacitymAh: fullChargeCapacity,
+            cycleCount: cycleCount,
+            temperatureCelsius: temperature.map { $0 / 100.0 },
+            voltage: voltage.map { $0 / 1000.0 }
+        )
+#elseif os(iOS)
+        let device = UIDevice.current
+        if device.batteryState == .unknown {
+            return nil
+        }
+        return BatteryDetails(
+            designCapacitymAh: nil,
+            fullyChargedCapacitymAh: nil,
+            cycleCount: nil,
+            temperatureCelsius: nil,
+            voltage: nil
+        )
 #else
         return nil
 #endif

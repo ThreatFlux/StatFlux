@@ -10,7 +10,13 @@ struct ContentView: View {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 200), spacing: 16)], spacing: 16) {
                     StatCard(icon: "gauge", title: "CPU Load", display: SystemStatsFormatter.cpu(from: statsStore.snapshot))
                     StatCard(icon: "square.stack.3d.up", title: "Memory", display: SystemStatsFormatter.memory(from: statsStore.snapshot))
-                    StatCard(icon: "bolt.fill", title: "Battery", display: SystemStatsFormatter.battery(from: statsStore.snapshot))
+                    NavigationLink {
+                        BatteryDetailView()
+                            .environmentObject(statsStore)
+                    } label: {
+                        StatCard(icon: "bolt.fill", title: "Battery", display: SystemStatsFormatter.battery(from: statsStore.snapshot))
+                    }
+                    .buttonStyle(.plain)
                     StatCard(icon: "externaldrive.fill", title: "Storage", display: SystemStatsFormatter.storage(from: statsStore.snapshot))
                 }
                 .padding(.vertical, 16)
