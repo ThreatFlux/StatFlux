@@ -1,66 +1,92 @@
-//
-//  ContentView.swift
-//  StatFlux
-//
-//  Created by Wyatt Roersma on 10/18/25.
-//
-
 import SwiftUI
-import SwiftData
 
 struct ContentView: View {
-    @Environment(\.modelContext) private var modelContext
-    @Query private var items: [Item]
+    @EnvironmentObject private var statsStore: SystemStatsStore
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
-        NavigationSplitView {
-            List {
-                ForEach(items) { item in
-                    NavigationLink {
-                        Text("Item at \(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))")
-                    } label: {
-                        Text(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))
-                    }
+        NavigationStack {
+            ScrollView {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 200), spacing: 16)], spacing: 16) {
+                    StatCard(icon: "gauge", title: "CPU Load", display: SystemStatsFormatter.cpu(from: statsStore.snapshot))
+                    StatCard(icon: "square.stack.3d.up", title: "Memory", display: SystemStatsFormatter.memory(from: statsStore.snapshot))
+                    StatCard(icon: "bolt.fill", title: "Battery", display: SystemStatsFormatter.battery(from: statsStore.snapshot))
+                    StatCard(icon: "externaldrive.fill", title: "Storage", display: SystemStatsFormatter.storage(from: statsStore.snapshot))
                 }
-                .onDelete(perform: deleteItems)
+                .padding(.vertical, 16)
+
+                Text("Last updated \(statsStore.snapshot.timestamp, format: .relative(presentation: .named))")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.bottom, 8)
+
+                Text("StatFlux continuously samples CPU, memory, battery, and storage to keep you informed.")
+                    .font(.caption)
+                    .multilineTextAlignment(.center)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal)
             }
-#if os(macOS)
-            .navigationSplitViewColumnWidth(min: 180, ideal: 200)
-#endif
+            .padding(.horizontal, 16)
+            .navigationTitle("System Overview")
             .toolbar {
-#if os(iOS)
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    EditButton()
-                }
-#endif
-                ToolbarItem {
-                    Button(action: addItem) {
-                        Label("Add Item", systemImage: "plus")
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        statsStore.refresh()
+                    } label: {
+                        Label("Refresh Now", systemImage: "arrow.clockwise")
                     }
                 }
             }
-        } detail: {
-            Text("Select an item")
         }
-    }
-
-    private func addItem() {
-        withAnimation {
-            let newItem = Item(timestamp: Date())
-            modelContext.insert(newItem)
-        }
-    }
-
-    private func deleteItems(offsets: IndexSet) {
-        withAnimation {
-            for index in offsets {
-                modelContext.delete(items[index])
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase == .active {
+                statsStore.refresh()
             }
         }
     }
 }
 
-#Preview {
-    ContentView()
-        .modelContainer(for: Item.self, inMemory: true)
+private struct StatCard: View {
+    let icon: String
+    let title: String
+    let display: StatDisplayValue
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Image(systemName: icon)
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .padding(10)
+                    .background(
+                        Circle()
+                            .fill(Color.accentColor.opacity(0.9))
+                    )
+
+                Spacer()
+            }
+
+            Text(title.uppercased())
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(.secondary)
+
+            Text(display.primary)
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(.primary)
+
+            Text(display.secondary)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+                .multilineTextAlignment(.leading)
+        }
+        .padding()
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(.thinMaterial)
+                .shadow(color: .black.opacity(0.08), radius: 8, x: 0, y: 4)
+        )
+    }
 }
