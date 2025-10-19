@@ -54,9 +54,23 @@ struct BatteryStat {
 struct BatteryDetails {
     let designCapacitymAh: Double?
     let fullyChargedCapacitymAh: Double?
+    let currentCapacitymAh: Double?
     let cycleCount: Int?
     let temperatureCelsius: Double?
     let voltage: Double?
+    let amperagemA: Double?
+    let wattage: Double?
+    let timeToEmptyMinutes: Int?
+    let timeToFullMinutes: Int?
+    let isExternalConnected: Bool?
+    let batteryHealth: String?
+    let manufacturer: String?
+    let deviceName: String?
+    let serialNumber: String?
+    let firmwareVersion: String?
+    let adapterAmperagemA: Double?
+    let adapterVoltage: Double?
+    let adapterWatts: Double?
 }
 
 struct StorageStat {
@@ -285,26 +299,96 @@ private final class SystemStatsCollector {
             return nil
         }
 
-        let designCapacity = description["DesignCapacity"] as? Double
-        let fullChargeCapacity = description[kIOPSMaxCapacityKey as String] as? Double
+        func doubleValue(for key: String) -> Double? {
+            if let value = description[key] as? Double {
+                return value
+            }
+            if let value = description[key] as? Int {
+                return Double(value)
+            }
+            return nil
+        }
+
+        let designCapacity = doubleValue(for: "DesignCapacity")
+        let fullChargeCapacity = doubleValue(for: kIOPSMaxCapacityKey as String)
+        let currentCapacity = doubleValue(for: kIOPSCurrentCapacityKey as String)
         let cycleCount = description["Cycle Count"] as? Int ?? description["CycleCount"] as? Int
-        let temperature = description["Temperature"] as? Double
-        let voltage = description["Voltage"] as? Double
+        let temperature = doubleValue(for: "Temperature")
+        let rawVoltage = doubleValue(for: "Voltage") ?? doubleValue(for: kIOPSVoltageKey as String)
+        let rawAmperage = doubleValue(for: "Amperage")
+        let rawWattage = doubleValue(for: "Watts")
+        let timeToEmpty = description[kIOPSTimeToEmptyKey as String] as? Int
+        let timeToFull = description[kIOPSTimeToFullChargeKey as String] as? Int
+        let isExternalConnected = description[kIOPSIsExternalPowerConnectedKey as String] as? Bool
+        let batteryHealth = description[kIOPSBatteryHealthKey as String] as? String
+        let manufacturer = description["Manufacturer"] as? String
+        let deviceName = description[kIOPSNameKey as String] as? String
+        let serialNumber = description["SerialNumber"] as? String
+        let firmwareVersion = description["FirmwareVersion"] as? String ?? description["Firmware Version"] as? String
+
+        var adapterVoltage: Double?
+        var adapterAmperage: Double?
+        var adapterWatts: Double?
+        if let adapter = description["AdapterDetails"] as? [String: Any] {
+            if let value = adapter["Voltage"] as? Double {
+                adapterVoltage = value / 1000.0
+            } else if let value = adapter["Voltage"] as? Int {
+                adapterVoltage = Double(value) / 1000.0
+            }
+            if let value = adapter["Amperage"] as? Double {
+                adapterAmperage = value
+            } else if let value = adapter["Amperage"] as? Int {
+                adapterAmperage = Double(value)
+            }
+            if let value = adapter["Watts"] as? Double {
+                adapterWatts = value
+            } else if let value = adapter["Watts"] as? Int {
+                adapterWatts = Double(value)
+            }
+        }
 
         if designCapacity == nil,
            fullChargeCapacity == nil,
+           currentCapacity == nil,
            cycleCount == nil,
            temperature == nil,
-           voltage == nil {
+           rawVoltage == nil,
+           rawAmperage == nil,
+           rawWattage == nil,
+           timeToEmpty == nil,
+           timeToFull == nil,
+           isExternalConnected == nil,
+           batteryHealth == nil,
+           manufacturer == nil,
+           deviceName == nil,
+           serialNumber == nil,
+           firmwareVersion == nil,
+           adapterVoltage == nil,
+           adapterAmperage == nil,
+           adapterWatts == nil {
             return nil
         }
 
         return BatteryDetails(
             designCapacitymAh: designCapacity,
             fullyChargedCapacitymAh: fullChargeCapacity,
+            currentCapacitymAh: currentCapacity,
             cycleCount: cycleCount,
             temperatureCelsius: temperature.map { $0 / 100.0 },
-            voltage: voltage.map { $0 / 1000.0 }
+            voltage: rawVoltage.map { $0 / 1000.0 },
+            amperagemA: rawAmperage,
+            wattage: rawWattage,
+            timeToEmptyMinutes: timeToEmpty,
+            timeToFullMinutes: timeToFull,
+            isExternalConnected: isExternalConnected,
+            batteryHealth: batteryHealth,
+            manufacturer: manufacturer,
+            deviceName: deviceName,
+            serialNumber: serialNumber,
+            firmwareVersion: firmwareVersion,
+            adapterAmperagemA: adapterAmperage,
+            adapterVoltage: adapterVoltage,
+            adapterWatts: adapterWatts
         )
 #elseif os(iOS)
         let device = UIDevice.current
@@ -314,9 +398,23 @@ private final class SystemStatsCollector {
         return BatteryDetails(
             designCapacitymAh: nil,
             fullyChargedCapacitymAh: nil,
+            currentCapacitymAh: nil,
             cycleCount: nil,
             temperatureCelsius: nil,
-            voltage: nil
+            voltage: nil,
+            amperagemA: nil,
+            wattage: nil,
+            timeToEmptyMinutes: nil,
+            timeToFullMinutes: nil,
+            isExternalConnected: nil,
+            batteryHealth: nil,
+            manufacturer: nil,
+            deviceName: nil,
+            serialNumber: nil,
+            firmwareVersion: nil,
+            adapterAmperagemA: nil,
+            adapterVoltage: nil,
+            adapterWatts: nil
         )
 #else
         return nil

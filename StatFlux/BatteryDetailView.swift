@@ -8,7 +8,10 @@ struct BatteryDetailView: View {
             VStack(alignment: .leading, spacing: 16) {
                 summarySection
                 diagnosticsSection
-                lifecycleSection
+                capacitySection
+                powerSection
+                adapterSection
+                metadataSection
             }
             .padding()
         }
@@ -33,8 +36,15 @@ struct BatteryDetailView: View {
                     detailRow(title: "Power Source", value: powerSourceDescription(battery.powerSource))
                     detailRow(title: "State", value: battery.statusDescription)
 
-                    if let remaining = battery.timeRemaining {
-                        let formatted = DateComponentsFormatter.positional.string(from: remaining) ?? "--"
+                    if let details = statsStore.snapshot.batteryDetails {
+                        if let minutes = details.timeToEmptyMinutes, minutes > 0 {
+                            detailRow(title: "Time to Empty", value: Self.timeFormatter.string(from: TimeInterval(minutes) * 60) ?? "--")
+                        }
+                        if let minutes = details.timeToFullMinutes, minutes > 0 {
+                            detailRow(title: "Time to Full", value: Self.timeFormatter.string(from: TimeInterval(minutes) * 60) ?? "--")
+                        }
+                    } else if let remaining = battery.timeRemaining {
+                        let formatted = Self.timeFormatter.string(from: remaining) ?? "--"
                         detailRow(title: "Estimated Time", value: formatted)
                     }
                 } else {
@@ -47,43 +57,136 @@ struct BatteryDetailView: View {
     }
 
     private var diagnosticsSection: some View {
-        GroupBox("Diagnostics") {
+        GroupBox("Health") {
             VStack(alignment: .leading, spacing: 8) {
-                if let details = statsStore.snapshot.batteryDetails {
-                    if let voltage = details.voltage {
-                        detailRow(title: "Voltage", value: String(format: "%.2f V", voltage))
-                    }
-
-                    if let temperature = details.temperatureCelsius {
-                        detailRow(title: "Temperature", value: String(format: "%.1f °C", temperature))
-                    }
-                } else {
+                guard let details = statsStore.snapshot.batteryDetails else {
                     Text("Diagnostics unavailable.")
                         .foregroundStyle(.secondary)
+                    return
+                }
+
+                if let health = details.batteryHealth {
+                    detailRow(title: "Battery Health", value: health)
+                }
+
+                if let temperature = details.temperatureCelsius {
+                    detailRow(title: "Temperature", value: Self.temperatureFormatter.string(fromValue: temperature, unit: .celsius))
+                }
+
+                if let cycleCount = details.cycleCount {
+                    detailRow(title: "Cycle Count", value: "\(cycleCount)")
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
-    private var lifecycleSection: some View {
-        GroupBox("Lifecycle") {
+    private var capacitySection: some View {
+        GroupBox("Capacity") {
             VStack(alignment: .leading, spacing: 8) {
-                if let details = statsStore.snapshot.batteryDetails {
-                    if let fullCapacity = details.fullyChargedCapacitymAh {
-                        detailRow(title: "Full Charge Capacity", value: "\(Int(fullCapacity)) mAh")
-                    }
-
-                    if let designCapacity = details.designCapacitymAh {
-                        detailRow(title: "Design Capacity", value: "\(Int(designCapacity)) mAh")
-                    }
-
-                    if let cycleCount = details.cycleCount {
-                        detailRow(title: "Cycle Count", value: "\(cycleCount)")
-                    }
-                } else {
-                    Text("No lifecycle data available.")
+                guard let details = statsStore.snapshot.batteryDetails else {
+                    Text("No capacity data available.")
                         .foregroundStyle(.secondary)
+                    return
+                }
+
+                if let current = details.currentCapacitymAh {
+                    detailRow(title: "Current Capacity", value: Self.capacityFormatter.string(from: current))
+                }
+
+                if let full = details.fullyChargedCapacitymAh {
+                    detailRow(title: "Full Charge Capacity", value: Self.capacityFormatter.string(from: full))
+                }
+
+                if let design = details.designCapacitymAh {
+                    detailRow(title: "Design Capacity", value: Self.capacityFormatter.string(from: design))
+                    if let full = details.fullyChargedCapacitymAh, design > 0 {
+                        let health = max(min(full / design, 1), 0)
+                        detailRow(title: "Capacity Health", value: health.formatted(.percent.precision(.fractionLength(0))))
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private var powerSection: some View {
+        GroupBox("Power & Charging") {
+            VStack(alignment: .leading, spacing: 8) {
+                guard let details = statsStore.snapshot.batteryDetails else {
+                    Text("Power data unavailable.")
+                        .foregroundStyle(.secondary)
+                    return
+                }
+
+                if let voltage = details.voltage {
+                    detailRow(title: "Battery Voltage", value: Self.voltageFormatter.string(from: voltage))
+                }
+
+                if let amperage = details.amperagemA {
+                    detailRow(title: "Battery Current", value: Self.currentFormatter.string(from: amperage))
+                }
+
+                if let watts = details.wattage {
+                    detailRow(title: "Battery Power", value: Self.wattFormatter.string(from: watts))
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private var adapterSection: some View {
+        GroupBox("Adapter") {
+            VStack(alignment: .leading, spacing: 8) {
+                guard let details = statsStore.snapshot.batteryDetails else {
+                    Text("Adapter information unavailable.")
+                        .foregroundStyle(.secondary)
+                    return
+                }
+
+                if let connected = details.isExternalConnected {
+                    detailRow(title: "External Power", value: connected ? "Connected" : "Disconnected")
+                }
+
+                if let volts = details.adapterVoltage {
+                    detailRow(title: "Adapter Voltage", value: Self.voltageFormatter.string(from: volts))
+                }
+
+                if let current = details.adapterAmperagemA {
+                    detailRow(title: "Adapter Current", value: Self.currentFormatter.string(from: current))
+                }
+
+                if let watts = details.adapterWatts {
+                    detailRow(title: "Adapter Power", value: Self.wattFormatter.string(from: watts))
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private var metadataSection: some View {
+        GroupBox("Device") {
+            VStack(alignment: .leading, spacing: 8) {
+                guard let details = statsStore.snapshot.batteryDetails else {
+                    Text("No device metadata available.")
+                        .foregroundStyle(.secondary)
+                    return
+                }
+
+                if let manufacturer = details.manufacturer {
+                    detailRow(title: "Manufacturer", value: manufacturer)
+                }
+
+                if let deviceName = details.deviceName {
+                    detailRow(title: "Battery Name", value: deviceName)
+                }
+
+                if let serial = details.serialNumber {
+                    detailRow(title: "Serial Number", value: serial)
+                }
+
+                if let firmware = details.firmwareVersion {
+                    detailRow(title: "Firmware Version", value: firmware)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -119,5 +222,78 @@ private extension DateComponentsFormatter {
         formatter.unitsStyle = .positional
         formatter.zeroFormattingBehavior = [.pad]
         return formatter
+    }
+}
+
+private extension BatteryDetailView {
+    static let timeFormatter = DateComponentsFormatter.positional
+
+    static let capacityFormatter: CapacityFormatter = CapacityFormatter()
+    static let voltageFormatter: VoltageFormatter = VoltageFormatter()
+    static let currentFormatter: CurrentFormatter = CurrentFormatter()
+    static let wattFormatter: WattFormatter = WattFormatter()
+    static let temperatureFormatter: MeasurementFormatter = {
+        let formatter = MeasurementFormatter()
+        formatter.unitStyle = .medium
+        formatter.unitOptions = .providedUnit
+        formatter.numberFormatter.maximumFractionDigits = 1
+        return formatter
+    }()
+
+    final class CapacityFormatter {
+        private let formatter: NumberFormatter = {
+            let formatter = NumberFormatter()
+            formatter.numberStyle = .decimal
+            formatter.maximumFractionDigits = 0
+            return formatter
+        }()
+
+        func string(from value: Double) -> String {
+            let number = NSNumber(value: value)
+            let formatted = formatter.string(from: number) ?? "\(Int(value))"
+            return "\(formatted) mAh"
+        }
+    }
+
+    final class VoltageFormatter {
+        private let formatter: NumberFormatter = {
+            let formatter = NumberFormatter()
+            formatter.numberStyle = .decimal
+            formatter.maximumFractionDigits = 2
+            return formatter
+        }()
+
+        func string(from value: Double) -> String {
+            let formatted = formatter.string(from: NSNumber(value: value)) ?? String(format: "%.2f", value)
+            return "\(formatted) V"
+        }
+    }
+
+    final class CurrentFormatter {
+        private let formatter: NumberFormatter = {
+            let formatter = NumberFormatter()
+            formatter.numberStyle = .decimal
+            formatter.maximumFractionDigits = 0
+            return formatter
+        }()
+
+        func string(from value: Double) -> String {
+            let formatted = formatter.string(from: NSNumber(value: value)) ?? String(format: "%.0f", value)
+            return "\(formatted) mA"
+        }
+    }
+
+    final class WattFormatter {
+        private let formatter: NumberFormatter = {
+            let formatter = NumberFormatter()
+            formatter.numberStyle = .decimal
+            formatter.maximumFractionDigits = 1
+            return formatter
+        }()
+
+        func string(from value: Double) -> String {
+            let formatted = formatter.string(from: NSNumber(value: value)) ?? String(format: "%.1f", value)
+            return "\(formatted) W"
+        }
     }
 }
