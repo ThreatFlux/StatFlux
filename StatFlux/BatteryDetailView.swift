@@ -13,7 +13,9 @@ struct BatteryDetailView: View {
             .padding()
         }
         .navigationTitle("Battery Details")
+#if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
+#endif
     }
 
     private var summarySection: some View {
@@ -49,11 +51,11 @@ struct BatteryDetailView: View {
             VStack(alignment: .leading, spacing: 8) {
                 if let details = statsStore.snapshot.batteryDetails {
                     if let voltage = details.voltage {
-                        detailRow(title: "Voltage", value: "\(voltage, specifier: "%.2f") V")
+                        detailRow(title: "Voltage", value: String(format: "%.2f V", voltage))
                     }
 
                     if let temperature = details.temperatureCelsius {
-                        detailRow(title: "Temperature", value: "\(temperature, specifier: "%.1f") °C")
+                        detailRow(title: "Temperature", value: String(format: "%.1f °C", temperature))
                     }
                 } else {
                     Text("Diagnostics unavailable.")

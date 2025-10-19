@@ -71,7 +71,9 @@ struct MenuBarSummaryLabel: View {
     }
 
     private func statText(icon: String, value: String) -> Text {
-        Text(Image(systemName: icon)) + Text(" \(value)")
+        Text(Image(systemName: icon))
+            .foregroundStyle(Color.accentColor)
+        + Text(" \(value)")
     }
 
     private var separatorText: Text {
