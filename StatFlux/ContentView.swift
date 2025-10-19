@@ -8,7 +8,14 @@ struct ContentView: View {
         NavigationStack {
             ScrollView {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 200), spacing: 16)], spacing: 16) {
-                    StatCard(icon: "gauge", title: "CPU Load", display: SystemStatsFormatter.cpu(from: statsStore.snapshot))
+                    NavigationLink {
+                        CPUDetailView()
+                            .environmentObject(statsStore)
+                    } label: {
+                        StatCard(icon: "gauge", title: "CPU Load", display: SystemStatsFormatter.cpu(from: statsStore.snapshot))
+                    }
+                    .buttonStyle(.plain)
+
                     StatCard(icon: "square.stack.3d.up", title: "Memory", display: SystemStatsFormatter.memory(from: statsStore.snapshot))
                     NavigationLink {
                         BatteryDetailView()

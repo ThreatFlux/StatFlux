@@ -20,13 +20,37 @@ struct SystemStatsSnapshot {
     static let empty = SystemStatsSnapshot(cpu: nil, memory: nil, battery: nil, storage: nil, batteryDetails: nil, timestamp: Date())
 }
 
+struct CPUCoreUsage: Identifiable {
+    let id: Int
+    let usage: Double
+}
+
+struct CPUBreakdown {
+    let user: Double
+    let system: Double
+    let idle: Double
+    let nice: Double
+}
+
 struct CPUStat {
     /// Overall CPU load in the range 0...1.
     let usage: Double
-    /// Total logical cores available.
-    let cores: Int
+    /// Total logical/schedulable cores.
+    let logicalCores: Int
+    /// Physical core count when available.
+    let physicalCores: Int?
     /// 1, 5, 15 minute load averages when available.
     let loadAverages: [Double]
+    /// Per-core utilization values.
+    let perCoreUsage: [CPUCoreUsage]
+    /// CPU marketing/brand string.
+    let brand: String?
+    /// Reported clock speed in GHz.
+    let frequencyGHz: Double?
+    /// Machine architecture identifier.
+    let architecture: String?
+    /// Usage breakdown by scheduler state.
+    let breakdown: CPUBreakdown?
 }
 
 struct MemoryStat {
@@ -120,6 +144,7 @@ final class SystemStatsStore: ObservableObject {
 private final class SystemStatsCollector {
     private var previousCPULoad: host_cpu_load_info = host_cpu_load_info()
     private var hasPreviousCPULoad = false
+    private var previousCoreLoads: [Int: CPUCoreTicks] = [:]
 
     func collect() -> SystemStatsSnapshot {
         var snapshot = SystemStatsSnapshot.empty
@@ -142,6 +167,10 @@ private final class SystemStatsCollector {
         }
 
         guard result == KERN_SUCCESS else { return nil }
+
+        if !hasPreviousCPULoad {
+            _ = fetchPerCoreUsage(computeDifferences: false)
+        }
 
         defer {
             previousCPULoad = load
@@ -171,9 +200,32 @@ private final class SystemStatsCollector {
         }
 
         let validAverages = loadCount > 0 ? Array(averages.prefix(Int(loadCount))) : []
-        let coreCount = max(1, Int(sysconf(Int32(_SC_NPROCESSORS_ONLN))))
+        let logicalCores = max(1, Int(sysconf(Int32(_SC_NPROCESSORS_ONLN))))
+        let physicalCores = sysctlInt("hw.physicalcpu")
+        let brand = sysctlString("machdep.cpu.brand_string")
+        let frequency = sysctlUInt64("hw.cpufrequency").map { Double($0) / 1_000_000_000 }
+        let architecture = architectureIdentifier()
 
-        return CPUStat(usage: usage, cores: coreCount, loadAverages: validAverages)
+        let breakdown = CPUBreakdown(
+            user: max(0, min(1, userDiff / totalTicks)),
+            system: max(0, min(1, systemDiff / totalTicks)),
+            idle: max(0, min(1, idleDiff / totalTicks)),
+            nice: max(0, min(1, niceDiff / totalTicks))
+        )
+
+        let perCoreUsage = fetchPerCoreUsage(computeDifferences: true)
+
+        return CPUStat(
+            usage: usage,
+            logicalCores: logicalCores,
+            physicalCores: physicalCores,
+            loadAverages: validAverages,
+            perCoreUsage: perCoreUsage,
+            brand: brand,
+            frequencyGHz: frequency,
+            architecture: architecture,
+            breakdown: breakdown
+        )
     }
 
     private func fetchMemoryUsage() -> MemoryStat? {
@@ -442,4 +494,110 @@ private final class SystemStatsCollector {
             return nil
         }
     }
+
+    private func fetchPerCoreUsage(computeDifferences: Bool) -> [CPUCoreUsage] {
+        var processorInfo: processor_info_array_t?
+        var processorMsgCount: mach_msg_type_number_t = 0
+        var processorCount: natural_t = 0
+
+        let result = host_processor_info(
+            mach_host_self(),
+            PROCESSOR_CPU_LOAD_INFO,
+            &processorCount,
+            &processorInfo,
+            &processorMsgCount
+        )
+
+        guard result == KERN_SUCCESS, let infoPointer = processorInfo else {
+            return []
+        }
+
+        defer {
+            let size = vm_size_t(Int(processorMsgCount) * MemoryLayout<integer_t>.size)
+            vm_deallocate(
+                mach_task_self_,
+                vm_address_t(bitPattern: UnsafeMutableRawPointer(infoPointer)),
+                size
+            )
+        }
+
+        let cpuInfoData = infoPointer.withMemoryRebound(
+            to: processor_cpu_load_info_data_t.self,
+            capacity: Int(processorCount)
+        ) {
+            Array(UnsafeBufferPointer(start: $0, count: Int(processorCount)))
+        }
+
+        var newTicks: [Int: CPUCoreTicks] = [:]
+        var usages: [CPUCoreUsage] = []
+
+        for (index, info) in cpuInfoData.enumerated() {
+            let ticks = CPUCoreTicks(
+                user: info.cpu_ticks.0,
+                system: info.cpu_ticks.1,
+                idle: info.cpu_ticks.2,
+                nice: info.cpu_ticks.3
+            )
+
+            if computeDifferences, let previous = previousCoreLoads[index] {
+                let userDiff = Double(ticks.user) - Double(previous.user)
+                let systemDiff = Double(ticks.system) - Double(previous.system)
+                let idleDiff = Double(ticks.idle) - Double(previous.idle)
+                let niceDiff = Double(ticks.nice) - Double(previous.nice)
+                let total = userDiff + systemDiff + idleDiff + niceDiff
+
+                if total > 0 {
+                    let usage = max(0, min(1, (total - idleDiff) / total))
+                    usages.append(CPUCoreUsage(id: index, usage: usage))
+                }
+            }
+
+            newTicks[index] = ticks
+        }
+
+        previousCoreLoads = newTicks
+        return usages.sorted { $0.id < $1.id }
+    }
+
+    private func sysctlInt(_ name: String) -> Int? {
+        var value: Int32 = 0
+        var size = MemoryLayout<Int32>.size
+        let result = sysctlbyname(name, &value, &size, nil, 0)
+        guard result == 0 else { return nil }
+        return Int(value)
+    }
+
+    private func sysctlUInt64(_ name: String) -> UInt64? {
+        var value: UInt64 = 0
+        var size = MemoryLayout<UInt64>.size
+        let result = sysctlbyname(name, &value, &size, nil, 0)
+        guard result == 0 else { return nil }
+        return value
+    }
+
+    private func sysctlString(_ name: String) -> String? {
+        var length: size_t = 0
+        guard sysctlbyname(name, nil, &length, nil, 0) == 0 else { return nil }
+        var buffer = [CChar](repeating: 0, count: length)
+        guard sysctlbyname(name, &buffer, &length, nil, 0) == 0 else { return nil }
+        return String(cString: buffer)
+    }
+
+    private func architectureIdentifier() -> String? {
+        var systemInfo = utsname()
+        guard uname(&systemInfo) == 0 else { return nil }
+        let mirror = Mirror(reflecting: systemInfo.machine)
+        let identifier = mirror.children.reduce(into: "") { accum, element in
+            guard let value = element.value as? Int8, value != 0 else { return }
+            accum.append(Character(UnicodeScalar(UInt8(value))))
+        }
+        return identifier.isEmpty ? nil : identifier
+    }
+}
+
+private struct CPUCoreTicks {
+    let user: UInt32
+    let system: UInt32
+    let idle: UInt32
+    let nice: UInt32
 }

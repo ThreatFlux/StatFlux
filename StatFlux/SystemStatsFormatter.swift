@@ -30,11 +30,16 @@ enum SystemStatsFormatter {
         let primary = "\(percentString(cpu.usage)) load"
 
         if cpu.loadAverages.isEmpty {
-            return StatDisplayValue(primary: primary, secondary: "\(cpu.cores) cores active")
+            return StatDisplayValue(primary: primary, secondary: coreSummary(cpu))
         }
 
         let peaks = cpu.loadAverages.map { String(format: "%.2f", $0) }.joined(separator: " / ")
-        return StatDisplayValue(primary: primary, secondary: "Load avg: \(peaks)")
+        var details = ["Load avg: \(peaks)"]
+        let coreInfo = coreSummary(cpu)
+        if !coreInfo.isEmpty {
+            details.append(coreInfo)
+        }
+        return StatDisplayValue(primary: primary, secondary: details.joined(separator: " • "))
     }
 
     static func memory(from snapshot: SystemStatsSnapshot) -> StatDisplayValue {
@@ -109,6 +114,14 @@ private extension SystemStatsFormatter {
         let ratio = Double(used) / Double(total)
         guard ratio.isFinite else { return nil }
         return percentString(max(0, min(ratio, 1)))
+    }
+
+    static func coreSummary(_ cpu: CPUStat) -> String {
+        var parts: [String] = ["\(cpu.logicalCores) logical"]
+        if let physical = cpu.physicalCores {
+            parts.append("\(physical) physical")
+        }
+        return parts.joined(separator: " / ")
     }
 }
 
